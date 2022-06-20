@@ -27,6 +27,7 @@ import Main from "./Main/Main";
 import Orders from "./Orders/Orders";
 import Customers from "./Customers/Customers";
 import { useHistory } from "react-router-dom";
+import Addjob from "../AddJob/AddJob";
 
 const drawerWidth = 240;
 
@@ -229,7 +230,7 @@ export default function Dashboard() {
           <ListItem
             button
             selected={selectedIndex === 5}
-            onClick={(event) => handleListItemClick(event, 5, "AddJob")}
+            onClick={(event) => handleListItemClick(event, 5, "/AddJob")}
           >
             <ListItemIcon>
               <WorkIcon />
@@ -248,6 +249,9 @@ export default function Dashboard() {
       </Route>
       <Route exact path="/Customers">
         <Customers />
+      </Route>
+      <Route exact path="/AddJob">
+        <Addjob />
       </Route>
     </div>
   );

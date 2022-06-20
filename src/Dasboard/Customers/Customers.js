@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import Box from "@material-ui/core/Box";
 import Container from "@material-ui/core/Container";
 import Typography from "@material-ui/core/Typography";
-import Link from "@material-ui/core/Link";
 import Avatar from "@material-ui/core/Avatar";
 import Button from "@material-ui/core/Button";
 import TextField from "@material-ui/core/TextField";
@@ -17,11 +16,9 @@ import FormControlLabel from "@material-ui/core/FormControlLabel";
 import FormHelperText from "@material-ui/core/FormHelperText";
 import FormControl from "@material-ui/core/FormControl";
 import Service from "../../service";
+import Axios from "axios";
 import Snackbar from "@material-ui/core/Snackbar";
 import Alert from "@material-ui/lab/Alert";
-import Modal from "@material-ui/core/Modal";
-import Backdrop from "@material-ui/core/Backdrop";
-import Fade from "@material-ui/core/Fade";
 import { trackPromise } from "react-promise-tracker";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import AccountBoxIcon from "@material-ui/icons/AccountBox";
@@ -39,23 +36,8 @@ import ExpandLess from "@material-ui/icons/ExpandLess";
 import ExpandMore from "@material-ui/icons/ExpandMore";
 import StarBorder from "@material-ui/icons/StarBorder";
 import EditIcon from "@material-ui/icons/Edit";
-import { IconButton } from "@material-ui/core";
-
-function Copyright() {
-  return (
-    <Typography variant="body2" color="textSecondary" align="center">
-      {"Copyright © "}
-      <Link color="inherit" href="https://material-ui.com/">
-        Your Website
-      </Link>{" "}
-      {new Date().getFullYear()}
-      {"."}
-    </Typography>
-  );
-}
-
+import { Fab, IconButton } from "@material-ui/core";
 const drawerWidth = 240;
-
 const useStyles = makeStyles((theme) => ({
   root: {
     display: "flex",
@@ -85,6 +67,7 @@ const useStyles = makeStyles((theme) => ({
       duration: theme.transitions.duration.leavingScreen,
     }),
   },
+
   appBarShift: {
     marginLeft: drawerWidth,
     width: `calc(100% - ${drawerWidth}px)`,
@@ -148,6 +131,9 @@ const useStyles = makeStyles((theme) => ({
   fixedHeight: {
     height: 240,
   },
+  accordian: {
+    marginTop: theme.spacing(14)
+  },
   avatar: {
     margin: theme.spacing(1),
     backgroundColor: theme.palette.secondary.main,
@@ -155,6 +141,8 @@ const useStyles = makeStyles((theme) => ({
   form: {
     width: "100%", // Fix IE 11 issue.
     marginTop: theme.spacing(1),
+    overflow: "hidden",
+    height: "100%"
   },
   submit: {
     margin: theme.spacing(3, 0, 2),
@@ -180,6 +168,7 @@ const useStyles = makeStyles((theme) => ({
     overflow: "auto",
     maxHeight: 300,
   },
+
   listSection: {
     backgroundColor: "inherit",
   },
@@ -187,16 +176,10 @@ const useStyles = makeStyles((theme) => ({
     backgroundColor: "inherit",
     padding: 0,
   },
-  modal: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalPaper: {
-    backgroundColor: theme.palette.background.paper,
-    border: "2px solid #000",
-    boxShadow: theme.shadows[5],
-    padding: theme.spacing(2, 4, 3),
+  fab: {
+    position: 'fixed',
+    bottom: theme.spacing(2),
+    right: theme.spacing(2),
   },
 }));
 
@@ -205,6 +188,8 @@ export default function Customers() {
   const [customerName, setCustomerName] = useState("");
   const [customerMobileNo, setCustomerMobileNo] = useState("");
   const [customerShopName, setCustomerShopName] = useState("");
+  const [loadingFormSubmit, setLoadingFormSubmit] = useState(false);
+  const [isDisabledSaveButton, setIsDisabledSaveButton] = useState(false);
 
   const [autoCompleteSelectedValue, setAutoCompleteSelectedValue] = useState(
     {}
@@ -213,6 +198,7 @@ export default function Customers() {
   const [customerNameError, setCustomerNameError] = useState("");
   const [customerMobileNoError, setCustomerMobileNoError] = useState("");
   const [customerShopNameError, setCustomerShopNameError] = useState("");
+  var [addedCustomer, setAddedCustomer] = useState(0);
 
   const [value, setValue] = useState("");
   const [helperText, setHelperText] = useState("");
@@ -221,20 +207,13 @@ export default function Customers() {
   const [showShopName, setShowShopName] = useState("block");
   const [snackBarMessage, setSnackBarMessage] = useState("");
   const [showSeverity, setShowSeverity] = useState("error");
+  const [saveButtonValue, setSaveButtonValue] = useState("Customer");
+  const [id, setId] = useState("");
+  const [showId, setShowId] = useState("none");
 
   const [open, setOpen] = useState(false);
 
   const [openSubList, setOpenSubList] = useState(true);
-
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const handleModalOpen = () => {
-    setModalOpen(true);
-  };
-
-  const handleModalClose = () => {
-    setModalOpen(false);
-  };
 
   const handleSubListClick = (index) => {
     if (openSubList === index) {
@@ -245,7 +224,9 @@ export default function Customers() {
   };
 
   const handleAutoCompleteChange = (value) => {
-    setAutoCompleteSelectedValue(value);
+    if (value !== null) {
+      setAutoCompleteSelectedValue(value);
+    }
   };
 
   const handleClose = (event, reason) => {
@@ -260,9 +241,11 @@ export default function Customers() {
     if (event.target.value === "Customer Employee") {
       setShowSelect("block");
       setShowShopName("none");
+      setSaveButtonValue("Employee")
     } else {
       setShowSelect("none");
       setShowShopName("block");
+      setSaveButtonValue("Customer")
     }
     setHelperText("");
   };
@@ -277,19 +260,23 @@ export default function Customers() {
       return undefined;
     }
 
-    (async () => {
-      const response = await fetch(
-        "http://localhost:8080/api/crm/getcustomers"
-      );
-      const customers = await response.json();
+    Axios.get(
+      "http://localhost:8080/api/crm/getcustomers"
+    ).then(response => {
       if (active) {
-        if (customers) {
+        if (response.data) {
           setautoCompleteOptions(
-            Object.keys(customers).map((key) => customers[key])
+            Object.keys(response.data).map((key) => response.data[key])
           );
         }
       }
-    })();
+    })
+      .catch(err => {
+        setautoCompleteOptions([]);
+      })
+
+
+
 
     return () => {
       active = false;
@@ -322,14 +309,16 @@ export default function Customers() {
     );
     setValue("Customer");
     setShowSelect("none");
+    setShowShopName("block");
+    setSaveButtonValue("Customer")
+    setId(event.customerId && event.customerId !== "" ? event.customerId : "");
+    setShowId("block");
   };
 
   const handleEmployeeEdit = (event) => {
-    setModalOpen(true);
     setCustomerName("");
     setCustomerMobileNo("");
     setValue("Customer Employee");
-    setShowSelect("none");
     setCustomerName(
       event.employeeName && event.employeeName !== "" ? event.employeeName : ""
     );
@@ -340,6 +329,10 @@ export default function Customers() {
     );
     setValue("Customer Employee");
     setShowSelect("none");
+    setShowShopName("none");
+    setSaveButtonValue("Employee")
+    setId(event.employeeId && event.employeeId !== "" ? event.employeeId : "");
+    setShowId("block")
   };
 
   const onChangeCustomerName = (event) => {
@@ -347,6 +340,16 @@ export default function Customers() {
     val = val.replace(/[^A-z\s]/, "");
     setCustomerName(val);
   };
+  const handleReset = () => {
+    setCustomerName("");
+    setCustomerMobileNo("");
+    setValue("");
+    setShowSelect("none");
+    setShowShopName("none");
+    setSaveButtonValue("Employee")
+    setId("");
+    setShowId("none");
+  }
   const onCustomerMobileNo = (event) => {
     const value = event.target.value.replace(/\D/g, "");
     setCustomerMobileNo(value);
@@ -358,43 +361,51 @@ export default function Customers() {
   };
   const handleSubmit = (event) => {
     event.preventDefault();
+    setLoadingFormSubmit(true);
+    setIsDisabledSaveButton(true);
     setCustomerNameError("");
     setCustomerMobileNoError("");
     setCustomerShopNameError("");
 
-    if (customerName === "") {
+    if (customerName.trim() === "" || customerName.trim() === null) {
       setCustomerNameError("Customer Name can't be blank");
     }
-    if (customerMobileNo === "") {
+    if (customerMobileNo.trim() === "" || customerMobileNo.trim() === null) {
       setCustomerMobileNoError("Customer Mobile Number can't be blank");
     }
-    if (customerShopName === "") {
+    if (customerShopName.trim() === "" || customerShopName.trim() === null) {
       setCustomerShopNameError("Customer Shop Name can't be blank");
     }
-    if (!validator.isMobilePhone(customerMobileNo)) {
+    if (!validator.isMobilePhone(customerMobileNo) || customerMobileNo === "" || customerMobileNo.length < 10) {
       setCustomerMobileNoError("Please enter valid mobile number");
     }
-    if (value === "") {
+    if (value.trim() === "") {
       setHelperText("Please select an option.");
     }
+    console.log("valid phn no", validator.isMobilePhone(customerMobileNo));
 
     if (
-      customerNameError.trim() === "" &&
-      customerMobileNoError.trim() === "" &&
-      customerShopNameError.trim() === "" &&
-      helperText.trim() === "" &&
-      value.trim() === "Customer"
+      customerName.trim() !== "" && customerName.trim() !== null &&
+      customerMobileNo.trim() !== "" && customerMobileNo.trim() !== null && customerMobileNo.length === 10 &&
+      customerShopName.trim() !== "" && customerShopName.trim() !== null &&
+      helperText === "" &&
+      value === "Customer"
     ) {
       trackPromise(
         Service.saveCustomerData(
+          id,
           customerName,
           customerMobileNo,
           customerShopName
         ).then((response) => {
+          console.log(response);
           if (response.status === 200) {
             setSnackBarMessage("Saved succeffuly");
             setShowSeverity("success");
             setOpen(true);
+            setAddedCustomer(addedCustomer = addedCustomer + 1);
+            console.log("added custmer");
+            console.log(addedCustomer);
           }
         })
       ).catch((err) => {
@@ -414,14 +425,15 @@ export default function Customers() {
         }
       });
     } else if (
-      customerNameError.trim() === "" &&
-      customerMobileNoError.trim() === "" &&
+      customerName.trim() !== "" && customerName.trim() !== null &&
+      customerMobileNo.trim() !== "" && customerMobileNo.trim() !== null && customerMobileNo.length === 10 &&
       helperText.trim() === "" &&
       value.trim() === "Customer Employee" &&
       autoCompleteSelectedValue !== null
     ) {
       trackPromise(
         Service.saveCustomerEmployeeData(
+          id,
           autoCompleteSelectedValue.customerMobileNo,
           customerName,
           customerMobileNo
@@ -430,6 +442,9 @@ export default function Customers() {
             setSnackBarMessage("Saved succeffuly");
             setShowSeverity("success");
             setOpen(true);
+            setAddedCustomer(addedCustomer = addedCustomer + 1);
+            console.log("added custmer");
+            console.log(addedCustomer);
           }
         })
       ).catch((err) => {
@@ -451,6 +466,8 @@ export default function Customers() {
       });
     } else {
     }
+    setLoadingFormSubmit(false);
+    setIsDisabledSaveButton(false);
   };
 
   const [customerAndEmployee, setCustomerAndEmployee] = useState([]);
@@ -467,42 +484,22 @@ export default function Customers() {
   };
 
   useEffect(() => {
-    (async () => {
-      const response = await fetch(
-        "http://localhost:8080/api/crm/getcustomersandemployees"
-      );
-      const customers = await response.json();
-      console.log("called fetch");
-      setCustomerAndEmployee(customers);
-    })();
-  }, [loading]);
+    Axios.get(
+      "http://localhost:8080/api/crm/getcustomersandemployees"
+    ).then(response => {
+      console.log("called fetch", addedCustomer, response.data);
+      setCustomerAndEmployee(response.data);
+    })
+      .catch(err => {
+        setCustomerAndEmployee("");
+      })
+
+  }, [addedCustomer]);
   return (
     <Paper elevation={3} className={classes.paperGrid}>
-      <div>
-        <Modal
-          aria-labelledby="transition-modal-title"
-          aria-describedby="transition-modal-description"
-          className={classes.modal}
-          open={modalOpen}
-          onClose={handleModalClose}
-          closeAfterTransition
-          BackdropComponent={Backdrop}
-          BackdropProps={{
-            timeout: 500,
-          }}
-        >
-          <Fade in={open}>
-            <div className={classes.paperModal}>
-              <h2 id="transition-modal-title">Transition modal</h2>
-              <p id="transition-modal-description">
-                react-transition-group animates me.
-              </p>
-            </div>
-          </Fade>
-        </Modal>
-      </div>
-      <Grid container direction="row" alignItems="center">
-        <Grid item xs={6}>
+
+      <Grid container>
+        <Grid item sm={12} xs={12} md={6} lg={6}>
           <main className={classes.content}>
             <Container component="main" maxWidth="xs">
               <CssBaseline />
@@ -522,13 +519,31 @@ export default function Customers() {
                   <AssignmentIcon />
                 </Avatar>
                 <Typography component="h1" variant="h5">
-                  Save Customer
+                  Save Customer &nbsp;
+                  <Fab size="small" color="secondary" variant="extended" onClick={handleReset}>
+                    Reset
+                  </Fab>
                 </Typography>
                 <form
                   className={classes.form}
                   noValidate
                   onSubmit={handleSubmit}
                 >
+                  <Box component="div" display={showId}>
+                    <TextField
+                      disabled
+                      variant="outlined"
+                      margin="normal"
+                      required
+                      fullWidth
+                      id="id"
+                      label="id"
+                      name="id"
+                      value={id}
+                      autoComplete="off"
+                      autoFocus
+                    />
+                  </Box>
                   <TextField
                     error={customerNameError.length === 0 ? false : true}
                     variant="outlined"
@@ -610,10 +625,15 @@ export default function Customers() {
                         onClose={() => {
                           setautoCompleteopen(false);
                         }}
-                        getOptionSelected={(option, value) =>
-                          option.customerName === value.customerName
+                        getOptionSelected={(option, value) => {
+                          if (value === "") {
+                            return true;
+                          } else if (option.customerName === value.customerName) {
+                            return true;
+                          }
                         }
-                        getOptionLabel={(option) => option.customerName}
+                        }
+                        getOptionLabel={(option) => option.customerName ? option.customerName : ''}
                         options={autoCompleteOptions}
                         loading={loading}
                         renderOption={(option) => {
@@ -637,7 +657,7 @@ export default function Customers() {
                         renderInput={(params) => (
                           <TextField
                             {...params}
-                            label="Asynchronous"
+                            label="Select Customer"
                             variant="outlined"
                             InputProps={{
                               ...params.InputProps,
@@ -659,124 +679,140 @@ export default function Customers() {
                       <FormHelperText>Select the customer</FormHelperText>
                     </FormControl>
                   </Box>
+                  {loadingFormSubmit && (
+                    <CircularProgress
+                      size={68}
+                    />
+                  )}
+
                   <Button
                     type="submit"
+                    disabled={isDisabledSaveButton}
                     fullWidth
                     variant="contained"
                     color="primary"
                     className={classes.submit}
                   >
-                    Save Customer
+                    Save {saveButtonValue}
                   </Button>
                 </form>
               </div>
-              <Box mt={8}>
-                <Copyright />
-              </Box>
             </Container>
           </main>
         </Grid>
-        <Grid item xs={6}>
-          <List
-            component="nav"
-            aria-labelledby="nested-list-subheader"
-            subheader={
-              <ListSubheader component="div" id="nested-list-subheader">
-                Customers And Employees
-              </ListSubheader>
-            }
-          >
-            {customerAndEmployee.map((item, index) => {
-              return (
-                <List key={index}>
-                  <ListItem
-                    key={index}
-                    button
-                    onClick={() => {
-                      handleSubListClick(index);
-                    }}
-                  >
-                    <ListItemIcon>
-                      <AccountBoxIcon />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={
-                        item.customer.customerName !== ""
-                          ? item.customer.customerName
-                          : ""
-                      }
-                      secondary={
-                        item.customer.customerShopName !== ""
-                          ? item.customer.customerShopName
-                          : ""
-                      }
-                    />
-                    <ListItemIcon>
-                      <IconButton
-                        aria-label="comments"
-                        onClick={() => {
-                          handleCustomerEdit(
-                            item.customer !== ""
-                              ? item.customer
-                              : customerObject
-                          );
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                    </ListItemIcon>
-                    {index === openSubList ? <ExpandLess /> : <ExpandMore />}
-                  </ListItem>
-                  <Collapse
-                    className={classes.nested}
-                    in={index === openSubList}
-                    timeout="auto"
-                    unmountOnExit
-                  >
-                    <List component="div" disablePadding>
-                      {item.customersEmployeeList.map((sub, subIndex) => {
-                        return (
-                          <ListItem
-                            className={classes.nested}
-                            key={subIndex}
-                            button
-                          >
-                            <ListItemIcon>
-                              <StarBorder />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={
-                                sub && sub.employeeName ? (
-                                  sub.employeeName
-                                ) : (
-                                  <p>No Employee</p>
-                                )
-                              }
-                            />
-                            <ListItemIcon>
-                              <IconButton
-                                onClick={() => {
-                                  handleEmployeeEdit(
-                                    sub !== "" ? sub : employeeObject
-                                  );
-                                }}
-                                edge="start"
-                                aria-label="comments"
+        <Grid item sm={12} xs={12} md={6} lg={6}>
+          {customerAndEmployee && customerAndEmployee.length > 0 &&
+            customerAndEmployee[0] !== null && customerAndEmployee[0].errorCode === null ?
+            <List
+              className={classes.accordian}
+              component="nav"
+              aria-labelledby="nested-list-subheader"
+              subheader={
+                <ListSubheader component="div" id="nested-list-subheader">
+                  Customers And Employees
+                </ListSubheader>
+              }
+            >
+              {customerAndEmployee.map((item, index) => {
+                return (
+
+                  <List key={index}>
+                    <ListItem
+                      key={index}
+                      button
+                      onClick={() => {
+                        handleSubListClick(index);
+                      }}
+                    >
+                      <ListItemIcon>
+                        <AccountBoxIcon />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={
+                          item && item.customer && item.customer.customerName &&
+                            item.customer.customerName !== ""
+                            ? item.customer.customerName
+                            : ""
+                        }
+                        secondary={
+                          item && item.customer && item.customer.customerShopName &&
+                            item.customer.customerShopName !== ""
+                            ? item.customer.customerShopName
+                            : ""
+                        }
+                      />
+                      <ListItemIcon>
+                        <IconButton
+                          aria-label="comments"
+                          onClick={() => {
+                            handleCustomerEdit(
+                              item.customer !== ""
+                                ? item.customer
+                                : customerObject
+                            );
+                          }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      </ListItemIcon>
+                      {index === openSubList ? <ExpandLess /> : <ExpandMore />}
+                    </ListItem>
+                    <Collapse
+                      className={classes.nested}
+                      in={index === openSubList}
+                      timeout="auto"
+                      unmountOnExit
+                    >
+                      {item && item.customersEmployeeList && item.customersEmployeeList.length > 0 ?
+                        <List component="div" disablePadding>
+                          {item.customersEmployeeList.map((sub, subIndex) => {
+                            return (
+                              <ListItem
+                                className={classes.nested}
+                                key={subIndex}
+                                button
                               >
-                                <EditIcon />
-                              </IconButton>
-                            </ListItemIcon>
-                          </ListItem>
-                        );
-                      })}
-                    </List>
-                  </Collapse>
-                </List>
-              );
-            })}
-          </List>
+                                <ListItemIcon>
+                                  <StarBorder />
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={
+                                    sub && sub.employeeName ? (
+                                      sub.employeeName
+                                    ) : (
+                                      <p>No Employee</p>
+                                    )
+                                  }
+                                />
+                                <ListItemIcon>
+                                  <IconButton
+                                    onClick={() => {
+                                      handleEmployeeEdit(
+                                        sub !== "" ? sub : employeeObject
+                                      );
+                                    }}
+                                    edge="start"
+                                    aria-label="comments"
+                                  >
+                                    <EditIcon />
+                                  </IconButton>
+                                </ListItemIcon>
+                              </ListItem>
+                            );
+                          }
+                          )
+                          }
+                        </List>
+                        : <p>No Employee</p>
+                      }
+                    </Collapse>
+                  </List>
+                );
+              })}
+            </List>
+            : <p>No Customers</p>}
         </Grid>
       </Grid>
-    </Paper>
+    </Paper >
   );
 }
